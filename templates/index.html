@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Refrigerator Water Monitor</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="/static/frontend-config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Header -->
+        <header class="dashboard-header">
+            <div class="header-content">
+                <h1>Water Level Monitor</h1>
+                <p class="subtitle">Smart Refrigerator Container</p>
+            </div>
+            <div class="update-indicator">
+                <span class="pulse"></span>
+                <span id="update-time">Updating...</span>
+            </div>
+        </header>
+
+        <main class="dashboard-main">
+            <!-- Status Card -->
+            <section id="status-card" class="status-card ok">
+                <div class="status-header">
+                    <div class="status-icon" id="status-icon">💧</div>
+                    <div class="status-text">
+                        <h2 id="status">Loading...</h2>
+                        <p id="message">Checking sensor...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Visual Tank -->
+            <section class="tank-section">
+                <div class="tank-container">
+                    <div class="tank">
+                        <div id="water" class="water"></div>
+                        <div class="tank-level-label" id="water-percentage">--%</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Charts Section -->
+            <section class="charts-section">
+                <div class="chart-card">
+                    <h3>Sensor History</h3>
+                    <div class="chart-container">
+                        <canvas id="historicalChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Sensor Details Grid -->
+            <section class="details-grid">
+                <article class="detail-card">
+                    <h4>GPIO Pin</h4>
+                    <p class="detail-value" id="gpio">--</p>
+                </article>
+                <article class="detail-card">
+                    <h4>Sensor Value</h4>
+                    <p class="detail-value" id="sensor-value">--</p>
+                </article>
+                <article class="detail-card">
+                    <h4>Status</h4>
+                    <p class="detail-value" id="status-detail">--</p>
+                </article>
+                <article class="detail-card">
+                    <h4>Last Updated</h4>
+                    <p class="detail-value" id="timestamp">--</p>
+                </article>
+            </section>
+
+            <!-- Info Box -->
+            <section class="info-section">
+                <p class="info-text">
+                    ℹ️ Sensor is positioned at the minimum safe water level. When the sensor reads dry, an alert is automatically sent via Telegram.
+                </p>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        let chart = null;
+
+        async function updateStatus() {
+            try {
+                const response = await fetch(`${API_URL}/api/status`);
+                const data = await response.json();
+
+                // Update status card
+                document.getElementById("status").innerText = data.status;
+                document.getElementById("message").innerText = data.message;
+                document.getElementById("status-detail").innerText = data.status;
+                document.getElementById("gpio").innerText = data.sensor_gpio;
+                document.getElementById("sensor-value").innerText = data.sensor_value;
+                document.getElementById("timestamp").innerText = data.timestamp;
+
+                // Update status card styling
+                const statusCard = document.getElementById("status-card");
+                const water = document.getElementById("water");
+                const statusIcon = document.getElementById("status-icon");
+
+                if (data.water_detected) {
+                    statusCard.className = "status-card ok";
+                    water.style.height = "75%";
+                    statusIcon.innerText = "✅";
+                    document.getElementById("water-percentage").innerText = "75%";
+                } else {
+                    statusCard.className = "status-card low";
+                    water.style.height = "8%";
+                    statusIcon.innerText = "⚠️";
+                    document.getElementById("water-percentage").innerText = "8%";
+                }
+
+                // Update timestamp
+                const now = new Date();
+                document.getElementById("update-time").innerText = now.toLocaleTimeString();
+
+                // Initialize or update chart
+                updateChart(data);
+            } catch (error) {
+                console.error("Error updating status:", error);
+            }
+        }
+
+        function updateChart(data) {
+            // Simple historical data tracking
+            if (!window.chartData) {
+                window.chartData = {
+                    labels: [],
+                    values: []
+                };
+            }
+
+            const now = new Date();
+            const timeLabel = now.toLocaleTimeString();
+            const sensorValue = data.sensor_value;
+
+            window.chartData.labels.push(timeLabel);
+            window.chartData.values.push(sensorValue);
+
+            // Keep only last 20 readings
+            if (window.chartData.labels.length > 20) {
+                window.chartData.labels.shift();
+                window.chartData.values.shift();
+            }
+
+            // Create or update chart
+            const ctx = document.getElementById("historicalChart").getContext("2d");
+
+            if (chart) {
+                chart.data.labels = window.chartData.labels;
+                chart.data.datasets[0].data = window.chartData.values;
+                chart.update();
+            } else {
+                chart = new Chart(ctx, {
+                    type: "line",
+                    data: {
+                        labels: window.chartData.labels,
+                        datasets: [{
+                            label: "Sensor Value",
+                            data: window.chartData.values,
+                            borderColor: "#06b6d4",
+                            backgroundColor: "rgba(6, 182, 212, 0.1)",
+                            tension: 0.4,
+                            fill: true,
+                            pointRadius: 4,
+                            pointBackgroundColor: "#06b6d4",
+                            pointBorderColor: "#fff",
+                            pointBorderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                max: 1023,
+                                grid: {
+                                    color: "rgba(0, 0, 0, 0.05)"
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    display: false
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // Initial update and set refresh interval
+        updateStatus();
+        setInterval(updateStatus, 5000);
+    </script>
+</body>
+</html>
