@@ -1,3 +1,4 @@
 {
-  "buildCommand": "echo 'Static site - no build needed'"
+  "buildCommand": "node build.js",
+  "outputDirectory": "public"
 }
